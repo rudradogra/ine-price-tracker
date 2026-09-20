@@ -13,6 +13,16 @@ export const getProducts = async () => {
   return Array.isArray(data) ? data : [];
 };
 
+export const getStoreProducts = async () => {
+  const { data } = await api.get('/store/products');
+  return Array.isArray(data) ? data : [];
+};
+
+export const checkStoreProduct = async (url) => {
+  const { data } = await api.post('/store/check', { url });
+  return data;
+};
+
 export const searchProducts = async (query) => {
   const cleanQuery = String(query || '').trim();
   if (!cleanQuery) return [];

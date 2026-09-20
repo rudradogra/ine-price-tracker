@@ -1,44 +1,32 @@
 import { useEffect, useMemo, useState } from 'react';
-import { AlertCircle, Plus, RefreshCw } from 'lucide-react';
+import { AlertCircle, Loader2, RefreshCw, Search } from 'lucide-react';
 import Navbar from './components/Navbar';
-import SearchBar from './components/SearchBar';
 import ProductCard from './components/ProductCard';
 import PriceHistoryModal from './components/PriceHistoryModal';
-import { deleteProduct, getProductHistory, getProductLogs, getProducts, searchProducts, trackProduct } from './api';
-
-const formatMoney = (value) => `$${Number(value || 0).toFixed(2)}`;
+import { checkStoreProduct, getProductHistory, getProductLogs, getStoreProducts } from './api';
 
 export default function App() {
   const [products, setProducts] = useState([]);
-  const [searchResults, setSearchResults] = useState([]);
+  const [catalogQuery, setCatalogQuery] = useState('');
   const [selectedProduct, setSelectedProduct] = useState(null);
   const [selectedHistory, setSelectedHistory] = useState([]);
   const [selectedLogs, setSelectedLogs] = useState([]);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [loading, setLoading] = useState(true);
   const [searchLoading, setSearchLoading] = useState(false);
+  const [checkingId, setCheckingId] = useState(null);
   const [error, setError] = useState('');
   const [lastSynced, setLastSynced] = useState('Never');
 
   const stats = useMemo(() => {
-    const totalTracked = products.length;
-    const avgPrice = totalTracked
-      ? products.reduce((sum, product) => sum + Number(product.price ?? 0), 0) / totalTracked
-      : 0;
-    const inStock = products.filter((product) => String(product.stockStatus || '').toLowerCase().includes('in stock')).length;
-
-    return {
-      totalTracked,
-      avgPrice: formatMoney(avgPrice),
-      inStock
-    };
+    return { totalTracked: products.length };
   }, [products]);
 
   const loadProducts = async () => {
     try {
       setLoading(true);
       setError('');
-      const data = await getProducts();
+      const data = await getStoreProducts();
       setProducts(data);
       setLastSynced(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
     } catch (err) {
@@ -53,54 +41,19 @@ export default function App() {
     loadProducts();
   }, []);
 
-  const handleSearch = async (query) => {
+  const handleCheckPrice = async (product) => {
     try {
-      setSearchLoading(true);
+      setCheckingId(product.id);
       setError('');
-      const results = await searchProducts(query);
-      setSearchResults(results);
+      const result = await checkStoreProduct(product.url);
+      setProducts((current) => current.map((item) => item.id === product.id
+        ? { ...item, price: result.price, stockStatus: result.stockStatus, lastChecked: result.checkedAt }
+        : item));
+      setLastSynced(new Date(result.checkedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
     } catch (err) {
-      setError(err?.response?.data?.error || 'Search failed.');
-      setSearchResults([]);
+      setError(err?.response?.data?.error || err?.response?.data?.details || 'Price check failed.');
     } finally {
-      setSearchLoading(false);
-    }
-  };
-
-  const handleTrackResult = async (result) => {
-    try {
-      setError('');
-      const payload = {
-        url: result.url,
-        targetPrice: Number(result.targetPrice ?? result.price ?? 0)
-      };
-
-      if (!payload.url) {
-        setError('This result is missing a URL and cannot be tracked.');
-        return;
-      }
-
-      const saved = await trackProduct(payload);
-      const normalized = saved?.product ?? saved;
-
-      if (normalized) {
-        setProducts((current) => [normalized, ...current]);
-      }
-
-      setSearchResults([]);
-      setLastSynced(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
-    } catch (err) {
-      setError(err?.response?.data?.error || 'Unable to add this product to tracking.');
-    }
-  };
-
-  const handleDelete = async (id) => {
-    try {
-      setError('');
-      await deleteProduct(id);
-      setProducts((current) => current.filter((product) => product.id !== id));
-    } catch (err) {
-      setError(err?.response?.data?.error || 'Unable to delete this product.');
+      setCheckingId(null);
     }
   };
 
@@ -123,35 +76,22 @@ export default function App() {
     }
   };
 
-  const emptyState = !loading && products.length === 0;
+  const visibleProducts = products.filter((product) => `${product.name} ${product.brand} ${product.category}`
+    .toLowerCase()
+    .includes(catalogQuery.trim().toLowerCase()));
+  const emptyState = !loading && visibleProducts.length === 0;
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100">
       <Navbar lastSynced={lastSynced} />
 
       <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-        <section className="mb-8 grid gap-4 md:grid-cols-3">
+        <section className="mb-8 grid gap-4">
           <div className="rounded-2xl border border-slate-800 bg-slate-900/80 p-5 shadow-soft">
             <p className="text-sm text-slate-400">Tracked products</p>
             <div className="mt-3 flex items-end justify-between">
               <span className="text-3xl font-bold text-white">{stats.totalTracked}</span>
-              <span className="rounded-full bg-indigo-500/10 px-2 py-1 text-xs text-indigo-300">Live</span>
-            </div>
-          </div>
-
-          <div className="rounded-2xl border border-slate-800 bg-slate-900/80 p-5 shadow-soft">
-            <p className="text-sm text-slate-400">Average price</p>
-            <div className="mt-3 flex items-end justify-between">
-              <span className="text-3xl font-bold text-white">{stats.avgPrice}</span>
-              <span className="rounded-full bg-emerald-500/10 px-2 py-1 text-xs text-emerald-300">Stable</span>
-            </div>
-          </div>
-
-          <div className="rounded-2xl border border-slate-800 bg-slate-900/80 p-5 shadow-soft">
-            <p className="text-sm text-slate-400">In stock</p>
-            <div className="mt-3 flex items-end justify-between">
-              <span className="text-3xl font-bold text-white">{stats.inStock}</span>
-              <span className="rounded-full bg-amber-500/10 px-2 py-1 text-xs text-amber-300">Alert</span>
+              <span className="rounded-full bg-indigo-500/10 px-2 py-1 text-xs text-indigo-300">Catalog</span>
             </div>
           </div>
         </section>
@@ -160,7 +100,7 @@ export default function App() {
           <div className="mb-5 flex items-center justify-between gap-3">
             <div>
               <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Automation</p>
-              <h2 className="mt-1 text-2xl font-semibold text-white">Track a product</h2>
+              <h2 className="mt-1 text-2xl font-semibold text-white">INE product catalog</h2>
             </div>
             <button
               type="button"
@@ -172,12 +112,16 @@ export default function App() {
             </button>
           </div>
 
-          <SearchBar
-            onSearch={handleSearch}
-            loading={searchLoading}
-            results={searchResults}
-            onSelectResult={handleTrackResult}
-          />
+          <div className="flex items-center gap-3 rounded-2xl border border-slate-700 bg-slate-950/60 p-3 focus-within:border-indigo-500">
+            <Search className="h-5 w-5 text-slate-400" />
+            <input
+              value={catalogQuery}
+              onChange={(event) => setCatalogQuery(event.target.value)}
+              placeholder="Filter all products by name, brand, or category..."
+              className="w-full bg-transparent text-base text-white placeholder:text-slate-500 focus:outline-none"
+            />
+            {searchLoading && <Loader2 className="h-4 w-4 animate-spin text-indigo-400" />}
+          </div>
         </section>
 
         {error && (
@@ -200,20 +144,18 @@ export default function App() {
           </div>
         ) : emptyState ? (
           <div className="rounded-3xl border border-dashed border-slate-700 bg-slate-900/60 p-10 text-center">
-            <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-indigo-500/10 text-indigo-300">
-              <Plus className="h-7 w-7" />
-            </div>
-            <h3 className="text-xl font-semibold text-white">No tracked products yet</h3>
-            <p className="mt-2 text-slate-400">Search for a product above to start monitoring prices.</p>
+            <h3 className="text-xl font-semibold text-white">No matching products</h3>
+            <p className="mt-2 text-slate-400">Try a different name, brand, or category.</p>
           </div>
         ) : (
           <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
-            {products.map((product) => (
+            {visibleProducts.map((product) => (
               <ProductCard
                 key={product.id}
                 product={product}
-                onDelete={handleDelete}
                 onViewHistory={handleViewHistory}
+                onCheckPrice={handleCheckPrice}
+                checking={checkingId === product.id}
               />
             ))}
           </div>

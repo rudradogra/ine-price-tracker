@@ -22,39 +22,81 @@ if (!supabaseUrl || !supabaseKey) {
 }
 const supabase = createClient(supabaseUrl, supabaseKey);
 
+const storeCatalogUrl = 'https://demo.inelabteamdev.com/api/catalog';
+const storeHeaders = { 'User-Agent': 'Mozilla/5.0 (compatible; INEPriceTracker/1.0)' };
+
+async function fetchStoreCatalog() {
+  const firstPage = await axios.get(storeCatalogUrl, {
+    params: { page: 1, pageSize: 60 },
+    headers: storeHeaders,
+    timeout: 12000
+  });
+
+  const pages = Number(firstPage.data.pages || 1);
+  const pageResponses = await Promise.allSettled(
+    Array.from({ length: Math.max(0, pages - 1) }, (_, index) =>
+      axios.get(storeCatalogUrl, {
+        params: { page: index + 2, pageSize: 60 },
+        headers: storeHeaders,
+        timeout: 12000
+      })
+    )
+  );
+
+  const products = [firstPage, ...pageResponses
+    .filter((result) => result.status === 'fulfilled')
+    .map((result) => result.value)]
+    .flatMap(({ data }) => data.items || []);
+
+  return [...new Map(products.map((product) => [product.id, product])).values()];
+}
+
 // --- ENDPOINT 1: Health Check ---
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
-// --- ENDPOINT 2: Live Product Search on Target Store ---
+// --- ENDPOINT 2: All Products Available in the INE Store ---
+app.get('/api/store/products', async (req, res) => {
+  try {
+    const products = await fetchStoreCatalog();
+    res.json(products.map((product) => ({
+      id: product.id,
+      name: product.name,
+      brand: product.brand,
+      category: product.category,
+      url: `https://demo.inelabteamdev.com/product/${product.id}`
+    })));
+  } catch (err) {
+    res.status(502).json({ error: 'Unable to load the INE product catalog', details: err.message });
+  }
+});
+
+// --- ENDPOINT 3: Check a Store Product Price Now ---
+app.post('/api/store/check', async (req, res) => {
+  const { url } = req.body;
+  if (!url) return res.status(400).json({ error: 'Product URL is required' });
+
+  try {
+    const result = await scrapeProduct(url);
+    res.status(result.error ? 502 : 200).json({
+      ...result,
+      checkedAt: new Date().toISOString()
+    });
+  } catch (err) {
+    res.status(502).json({ error: 'Price check failed', details: err.message, checkedAt: new Date().toISOString() });
+  }
+});
+
+// --- ENDPOINT 4: Live Product Search on Target Store ---
 app.get('/api/products/search', async (req, res) => {
   const query = String(req.query.q || '').trim().toLowerCase();
   if (!query) return res.status(400).json({ error: 'Search query is required' });
 
   try {
-    const catalogUrl = 'https://demo.inelabteamdev.com/api/catalog';
-    const firstPage = await axios.get(catalogUrl, {
-      params: { page: 1, pageSize: 60 },
-      headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' },
-      timeout: 8000
-    });
-
-    const pages = Number(firstPage.data.pages || 1);
-    const remainingPages = await Promise.all(
-      Array.from({ length: Math.max(0, pages - 1) }, (_, index) =>
-        axios.get(catalogUrl, {
-          params: { page: index + 2, pageSize: 60 },
-          headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' },
-          timeout: 8000
-        })
-      )
-    );
-
-    const products = [firstPage, ...remainingPages].flatMap(({ data }) => data.items || []);
-    const results = [...new Map(products
+    const products = await fetchStoreCatalog();
+    const results = products
       .filter((product) => `${product.name} ${product.brand} ${product.category}`.toLowerCase().includes(query))
-      .map((product) => [product.id, product])).values()]
       .slice(0, 20)
       .map((product) => ({
         id: product.id,
