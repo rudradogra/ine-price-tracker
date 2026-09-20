@@ -132,16 +132,19 @@ export default function App() {
     }
   };
 
-  const visibleProducts = products
-    .filter((product) => `${product.name} ${product.brand} ${product.category}`
-      .toLowerCase()
-      .includes(catalogQuery.trim().toLowerCase()))
-    .sort((left, right) => {
-      const leftStarred = trackedProducts.some((item) => item.url === left.url);
-      const rightStarred = trackedProducts.some((item) => item.url === right.url);
-      return Number(rightStarred) - Number(leftStarred);
-    });
-  const emptyState = !loading && visibleProducts.length === 0;
+  const normalizedQuery = catalogQuery.trim().toLowerCase();
+  const visibleProducts = normalizedQuery
+    ? products
+      .filter((product) => `${product.name} ${product.brand} ${product.category}`
+        .toLowerCase()
+        .includes(normalizedQuery))
+      .sort((left, right) => {
+        const leftStarred = trackedProducts.some((item) => item.url === left.url);
+        const rightStarred = trackedProducts.some((item) => item.url === right.url);
+        return Number(rightStarred) - Number(leftStarred);
+      })
+    : [];
+  const emptyState = !loading && normalizedQuery && visibleProducts.length === 0;
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100">
@@ -150,7 +153,7 @@ export default function App() {
       <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
         <section className="mb-8 grid gap-4">
           <div className="rounded-2xl border border-slate-800 bg-slate-900/80 p-5 shadow-soft">
-            <p className="text-sm text-slate-400">Tracked products</p>
+            <p className="text-sm text-slate-400">Available products</p>
             <div className="mt-3 flex items-end justify-between">
               <span className="text-3xl font-bold text-white">{stats.totalCatalog}</span>
               <span className="rounded-full bg-indigo-500/10 px-2 py-1 text-xs text-indigo-300">Available</span>
@@ -203,6 +206,12 @@ export default function App() {
                 <div className="h-12 rounded-xl bg-slate-800" />
               </div>
             ))}
+          </div>
+        ) : !loading && !normalizedQuery ? (
+          <div className="rounded-3xl border border-dashed border-slate-700 bg-slate-900/60 p-10 text-center">
+            <Search className="mx-auto mb-4 h-10 w-10 text-indigo-300" />
+            <h3 className="text-xl font-semibold text-white">Search the catalog</h3>
+            <p className="mt-2 text-slate-400">Enter a product name, brand, or category to find products to track.</p>
           </div>
         ) : emptyState ? (
           <div className="rounded-3xl border border-dashed border-slate-700 bg-slate-900/60 p-10 text-center">
