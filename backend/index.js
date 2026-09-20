@@ -59,6 +59,30 @@ async function fetchStoreCatalog() {
   return [...new Map(products.map((product) => [product.id, product])).values()];
 }
 
+function scrapeStatus(result) {
+  return result.error ? 'FAILED' : (result.attempts > 1 ? 'RETRIED' : 'SUCCESS');
+}
+
+async function saveScrapeResult(productId, result) {
+  const { error: logError } = await supabase.from('scrape_logs').insert([{
+    product_id: productId,
+    status: scrapeStatus(result),
+    error_message: result.error
+  }]);
+
+  if (logError) throw logError;
+
+  if (result.price !== null) {
+    const { error: historyError } = await supabase.from('price_history').insert([{
+      product_id: productId,
+      price: result.price,
+      stock_status: result.stockStatus
+    }]);
+
+    if (historyError) throw historyError;
+  }
+}
+
 // --- ENDPOINT 1: Health Check ---
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
@@ -144,23 +168,7 @@ app.post('/api/products', async (req, res) => {
 
     // Trigger initial scrape immediately upon tracking
     const scrapeResult = await scrapeProduct(product.url);
-    const status = scrapeResult.error ? 'FAILED' : (scrapeResult.attempts > 1 ? 'RETRIED' : 'SUCCESS');
-
-    // Save log
-    await supabase.from('scrape_logs').insert([{
-      product_id: product.id,
-      status: status,
-      error_message: scrapeResult.error
-    }]);
-
-    // Save initial price history if valid
-    if (scrapeResult.price !== null) {
-      await supabase.from('price_history').insert([{
-        product_id: product.id,
-        price: scrapeResult.price,
-        stock_status: scrapeResult.stockStatus
-      }]);
-    }
+    await saveScrapeResult(product.id, scrapeResult);
 
     res.status(201).json({ product, initialScrape: scrapeResult });
   } catch (err) {
@@ -177,9 +185,52 @@ app.get('/api/products', async (req, res) => {
       .order('created_at', { ascending: false });
 
     if (error) throw error;
-    res.json(products);
+
+    const enrichedProducts = await Promise.all(products.map(async (product) => {
+      const { data: latestHistory, error: historyError } = await supabase
+        .from('price_history')
+        .select('price, stock_status, timestamp')
+        .eq('product_id', product.id)
+        .order('timestamp', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (historyError) throw historyError;
+
+      return {
+        ...product,
+        price: latestHistory?.price ?? null,
+        stockStatus: latestHistory?.stock_status ?? 'Unknown',
+        lastChecked: latestHistory?.timestamp ?? null
+      };
+    }));
+
+    res.json(enrichedProducts);
   } catch (err) {
     res.status(500).json({ error: 'Failed to fetch products', details: err.message });
+  }
+});
+
+// --- ENDPOINT 6: Check and Persist a Tracked Product Now ---
+app.post('/api/products/:id/check', async (req, res) => {
+  try {
+    const { data: product, error } = await supabase
+      .from('products')
+      .select('*')
+      .eq('id', req.params.id)
+      .single();
+
+    if (error) throw error;
+
+    const result = await scrapeProduct(product.url);
+    await saveScrapeResult(product.id, result);
+
+    res.status(result.error ? 502 : 200).json({
+      ...result,
+      checkedAt: new Date().toISOString()
+    });
+  } catch (err) {
+    res.status(500).json({ error: 'Tracked product check failed', details: err.message });
   }
 });
 
@@ -260,23 +311,9 @@ app.post('/api/scrape/trigger', async (req, res) => {
     for (const product of products) {
       console.log(`[Cron Job] Processing product: ${product.name}`);
       const result = await scrapeProduct(product.url);
-      const status = result.error ? 'FAILED' : (result.attempts > 1 ? 'RETRIED' : 'SUCCESS');
+      await saveScrapeResult(product.id, result);
 
-      await supabase.from('scrape_logs').insert([{
-        product_id: product.id,
-        status: status,
-        error_message: result.error
-      }]);
-
-      if (result.price !== null) {
-        await supabase.from('price_history').insert([{
-          product_id: product.id,
-          price: result.price,
-          stock_status: result.stockStatus
-        }]);
-      }
-
-      summary.push({ productId: product.id, status, price: result.price });
+      summary.push({ productId: product.id, status: scrapeStatus(result), price: result.price });
     }
 
     return res.status(200).json({ message: 'Scrape batch completed', summary });

@@ -23,6 +23,11 @@ export const checkStoreProduct = async (url) => {
   return data;
 };
 
+export const checkTrackedProduct = async (id) => {
+  const { data } = await api.post(`/products/${id}/check`);
+  return data;
+};
+
 export const searchProducts = async (query) => {
   const cleanQuery = String(query || '').trim();
   if (!cleanQuery) return [];

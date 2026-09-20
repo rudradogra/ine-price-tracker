@@ -95,7 +95,10 @@ export default function PriceHistoryModal({ product, history, logs, loading, onC
                     <span className="text-sm text-slate-300">
                       {new Date(entry.timestamp || Date.now()).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}
                     </span>
-                    <span className="font-semibold text-white">${Number(entry.price ?? 0).toFixed(2)}</span>
+                    <div className="text-right">
+                      <span className="block font-semibold text-white">${Number(entry.price ?? 0).toFixed(2)}</span>
+                      <span className="block text-xs text-slate-400">{entry.stock_status || 'Unknown stock'}</span>
+                    </div>
                   </div>
                 ))
               )}

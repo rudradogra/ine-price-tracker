@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
-import { AlertCircle, Loader2, RefreshCw, Search } from 'lucide-react';
+import { AlertCircle, RefreshCw, Search } from 'lucide-react';
 import Navbar from './components/Navbar';
 import ProductCard from './components/ProductCard';
 import PriceHistoryModal from './components/PriceHistoryModal';
-import { checkStoreProduct, deleteProduct, getProductHistory, getProductLogs, getProducts, getStoreProducts, trackProduct } from './api';
+import { checkStoreProduct, checkTrackedProduct, deleteProduct, getProductHistory, getProductLogs, getProducts, getStoreProducts, trackProduct } from './api';
 
 export default function App() {
   const [products, setProducts] = useState([]);
@@ -14,7 +14,6 @@ export default function App() {
   const [selectedLogs, setSelectedLogs] = useState([]);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [searchLoading, setSearchLoading] = useState(false);
   const [checkingId, setCheckingId] = useState(null);
   const [trackingId, setTrackingId] = useState(null);
   const [error, setError] = useState('');
@@ -83,7 +82,10 @@ export default function App() {
     try {
       setCheckingId(product.id);
       setError('');
-      const result = await checkStoreProduct(product.url);
+      const trackedProduct = trackedProducts.find((item) => item.url === product.url);
+      const result = trackedProduct
+        ? await checkTrackedProduct(trackedProduct.id)
+        : await checkStoreProduct(product.url);
       setProducts((current) => current.map((item) => item.id === product.id
         ? { ...item, price: result.price, stockStatus: result.stockStatus, lastChecked: result.checkedAt }
         : item));
@@ -200,7 +202,6 @@ export default function App() {
               placeholder="Filter all products by name, brand, or category..."
               className="w-full bg-transparent text-base text-white placeholder:text-slate-500 focus:outline-none"
             />
-            {searchLoading && <Loader2 className="h-4 w-4 animate-spin text-indigo-400" />}
           </div>
         </section>
 
@@ -215,7 +216,7 @@ export default function App() {
           <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
             {Array.from({ length: 3 }).map((_, index) => (
               <div key={index} className="animate-pulse rounded-2xl border border-slate-800 bg-slate-900/80 p-4">
-                <div className="mb-4 h-40 rounded-xl bg-slate-800" />
+                <div className="mb-4 h-6 w-2/3 rounded bg-slate-800" />
                 <div className="mb-3 h-5 w-2/3 rounded bg-slate-800" />
                 <div className="mb-2 h-4 w-1/2 rounded bg-slate-800" />
                 <div className="h-12 rounded-xl bg-slate-800" />
