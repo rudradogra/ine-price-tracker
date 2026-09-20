@@ -92,7 +92,12 @@ export default function App() {
         : item));
       setLastSynced(new Date(result.checkedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
     } catch (err) {
-      setError(err?.response?.data?.error || err?.response?.data?.details || 'Price check failed.');
+      setError(
+        err?.response?.data?.error
+        || err?.response?.data?.details
+        || (err?.code === 'ECONNABORTED' ? 'Price check timed out while Render was starting the scraper.' : err?.message)
+        || 'Price check failed.'
+      );
     } finally {
       setCheckingId(null);
     }
