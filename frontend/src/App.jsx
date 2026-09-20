@@ -56,8 +56,8 @@ export default function App() {
       setError('');
       const saved = await trackProduct({ name: product.name, url: product.url });
       const tracked = {
-        ...(saved?.product || {}),
         ...product,
+        ...(saved?.product || {}),
         ...(saved?.initialScrape?.price !== null && saved?.initialScrape?.price !== undefined
           ? {
               price: saved.initialScrape.price,
@@ -150,6 +150,7 @@ export default function App() {
   };
 
   const normalizedQuery = catalogQuery.trim().toLowerCase();
+  const suggestedProducts = products.slice(0, 4);
   const visibleProducts = normalizedQuery
     ? products
       .filter((product) => `${product.name} ${product.brand} ${product.category}`
@@ -224,11 +225,36 @@ export default function App() {
             ))}
           </div>
         ) : !loading && !normalizedQuery ? (
-          <div className="rounded-3xl border border-dashed border-slate-700 bg-slate-900/60 p-10 text-center">
-            <Search className="mx-auto mb-4 h-10 w-10 text-indigo-300" />
-            <h3 className="text-xl font-semibold text-white">Search the catalog</h3>
-            <p className="mt-2 text-slate-400">Enter a product name, brand, or category to find products to track.</p>
-          </div>
+          <section>
+            <div className="mb-5 flex items-end justify-between gap-3">
+              <div>
+                <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Quick start</p>
+                <h2 className="mt-1 text-2xl font-semibold text-white">Choose a product to track</h2>
+              </div>
+              <span className="text-sm text-slate-400">Showing 4 products</span>
+            </div>
+            <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-4">
+              {suggestedProducts.map((product) => (
+                <ProductCard
+                  key={`suggested-${product.id}`}
+                  product={product}
+                  tracked={trackedProducts.some((item) => item.url === product.url)}
+                  onTrack={handleTrackProduct}
+                  onUntrack={handleUntrackProduct}
+                  onCheckPrice={handleCheckPrice}
+                  checking={checkingId === product.id}
+                  tracking={trackingId === product.id}
+                />
+              ))}
+            </div>
+            {suggestedProducts.length === 0 && (
+              <div className="rounded-3xl border border-dashed border-slate-700 bg-slate-900/60 p-10 text-center">
+                <Search className="mx-auto mb-4 h-10 w-10 text-indigo-300" />
+                <h3 className="text-xl font-semibold text-white">Search the catalog</h3>
+                <p className="mt-2 text-slate-400">Enter a product name, brand, or category to find products to track.</p>
+              </div>
+            )}
+          </section>
         ) : emptyState ? (
           <div className="rounded-3xl border border-dashed border-slate-700 bg-slate-900/60 p-10 text-center">
             <h3 className="text-xl font-semibold text-white">No matching products</h3>

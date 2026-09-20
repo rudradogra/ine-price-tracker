@@ -79,13 +79,15 @@ export default function ProductCard({ product, tracked, onTrack, onUntrack, onDe
             {checking && <Loader2 className="h-4 w-4 animate-spin" />}
             {checking ? 'Checking...' : 'Check price'}
           </button>
-          <button
-            type="button"
-            onClick={() => onViewHistory(product)}
-            className="col-span-2 rounded-xl border border-indigo-500/50 bg-indigo-500/10 px-3 py-2 text-sm font-medium text-indigo-200 transition hover:bg-indigo-500/20"
-          >
-            History
-          </button>
+          {tracked && (
+            <button
+              type="button"
+              onClick={() => onViewHistory(product)}
+              className="col-span-2 rounded-xl border border-indigo-500/50 bg-indigo-500/10 px-3 py-2 text-sm font-medium text-indigo-200 transition hover:bg-indigo-500/20"
+            >
+              History
+            </button>
+          )}
         </div>
         <p className="text-xs text-slate-500">
           Last checked: {product.lastChecked ? new Date(product.lastChecked).toLocaleString() : 'Never'}
