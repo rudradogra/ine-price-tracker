@@ -10,7 +10,15 @@ dotenv.config();
 globalThis.WebSocket = WebSocket;
 
 const app = express();
-app.use(cors());
+app.use(cors({
+  origin: [
+    'http://localhost:5173',
+    'https://ine-price-tracker-seven-topaz.vercel.app'
+  ],
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'x-cron-secret'],
+  credentials: true
+}));
 app.use(express.json());
 
 // Initialize Supabase Client
