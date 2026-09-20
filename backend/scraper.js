@@ -8,7 +8,11 @@ import { chromium } from 'playwright';
 export function parsePrice(rawPrice) {
   if (!rawPrice) return null;
 
-  const cleanStr = String(rawPrice).trim().replace(/\s+/g, '').replace(/[^0-9,.-]/g, '');
+  const cleanStr = String(rawPrice)
+    .trim()
+    .replace(/\s+/g, '')
+    .replace(/[^0-9,.-]/g, '')
+    .replace(/^[.,]+(?=\d)/, '');
   if (!cleanStr || cleanStr === '-' || cleanStr === '.' || cleanStr === ',') return null;
 
   const hasDot = cleanStr.includes('.');
@@ -90,26 +94,48 @@ async function scrapeWithBrowser(url, isHeaded) {
   try {
     browser = await chromium.launch({
       headless: !isHeaded,
-      slowMo: isHeaded ? 400 : 0 // Slow down actions in headed mode for clear video capture
+      slowMo: isHeaded ? 400 : 0,
+      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage']
     });
 
     const page = await browser.newPage();
     page.setDefaultTimeout(10000);
 
     await page.goto(url, { waitUntil: 'domcontentloaded' });
-    
-    // Wait briefly for client-side JavaScript hydration
-    await page.waitForSelector('.price, .product-price, [data-price], .amount', { timeout: 6000 });
 
-    const priceText = await page.evaluate(() => {
-      const el = document.querySelector('.price, .product-price, [data-price], .amount');
-      return el ? el.textContent : null;
+    const layout = await page.evaluate(async () => {
+      const response = await fetch('/api/layout');
+      if (!response.ok) throw new Error(`Layout request failed with HTTP ${response.status}`);
+      return response.json();
     });
 
-    const stockText = await page.evaluate(() => {
-      const el = document.querySelector('.stock, .availability, .in-stock, .stock-status');
-      return el ? el.textContent : 'In Stock';
-    });
+    const priceBlock = page.locator(`[class~="${layout.classes.priceWrap}"]`).first();
+    await priceBlock.waitFor({ state: 'visible' });
+    const box = await priceBlock.boundingBox();
+    if (!box) throw new Error('Price area was not measurable');
+
+    // The store requires real pointer movement before it enables price reveal.
+    const moveCount = 10;
+    for (let index = 0; index < moveCount; index++) {
+      const x = box.x + (box.width * (index + 1)) / (moveCount + 1);
+      const y = box.y + box.height / 2;
+      await page.mouse.move(x, y);
+      await page.waitForTimeout(80);
+    }
+    await page.waitForTimeout(700);
+
+    const revealButton = page.getByRole('button', { name: /reveal price/i });
+    await revealButton.waitFor({ state: 'visible' });
+    await page.waitForFunction(() => {
+      const button = document.querySelector('button[aria-label="Reveal price"]');
+      return button && !button.disabled;
+    }, null, { timeout: 10000 });
+    await revealButton.click();
+
+    const priceSelector = `[class~="${layout.classes.priceValue}"]`;
+    await page.waitForSelector(priceSelector, { state: 'visible', timeout: 15000 });
+    const priceText = await page.locator(priceSelector).first().textContent();
+    const stockText = await page.locator(`[class~="${layout.classes.stock}"]`).first().textContent().catch(() => 'Unknown');
 
     const cleanPrice = parsePrice(priceText);
     if (!cleanPrice) {

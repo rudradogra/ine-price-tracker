@@ -3,10 +3,11 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import { createClient } from '@supabase/supabase-js';
 import axios from 'axios';
-import * as cheerio from 'cheerio';
+import WebSocket from 'ws';
 import { scrapeProduct } from './scraper.js';
 
 dotenv.config();
+globalThis.WebSocket = WebSocket;
 
 const app = express();
 app.use(cors());
@@ -14,13 +15,12 @@ app.use(express.json());
 
 // Initialize Supabase Client
 const supabaseUrl = process.env.SUPABASE_URL;
-const supabaseKey = process.env.SUPABASE_KEY;
-const supabase = createClient(supabaseUrl, supabaseKey);
+const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_KEY;
 
 if (!supabaseUrl || !supabaseKey) {
-  console.error("CRITICAL ERROR: Supabase environment variables are missing!");
+  throw new Error('SUPABASE_URL and SUPABASE_KEY are required');
 }
-supabase = createClient(supabaseUrl || '', supabaseKey || '');
+const supabase = createClient(supabaseUrl, supabaseKey);
 
 // --- ENDPOINT 1: Health Check ---
 app.get('/api/health', (req, res) => {
@@ -29,37 +29,40 @@ app.get('/api/health', (req, res) => {
 
 // --- ENDPOINT 2: Live Product Search on Target Store ---
 app.get('/api/products/search', async (req, res) => {
-  const query = req.query.q;
+  const query = String(req.query.q || '').trim().toLowerCase();
   if (!query) return res.status(400).json({ error: 'Search query is required' });
 
   try {
-    const storeUrl = `https://demo.inelabteamdev.com/?s=${encodeURIComponent(query)}`;
-    const response = await axios.get(storeUrl, {
+    const catalogUrl = 'https://demo.inelabteamdev.com/api/catalog';
+    const firstPage = await axios.get(catalogUrl, {
+      params: { page: 1, pageSize: 60 },
       headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' },
       timeout: 8000
     });
 
-    const $ = cheerio.load(response.data);
-    const results = [];
+    const pages = Number(firstPage.data.pages || 1);
+    const remainingPages = await Promise.all(
+      Array.from({ length: Math.max(0, pages - 1) }, (_, index) =>
+        axios.get(catalogUrl, {
+          params: { page: index + 2, pageSize: 60 },
+          headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' },
+          timeout: 8000
+        })
+      )
+    );
 
-    $('.product, .product-item, .product-card, article').each((_, el) => {
-      const title = $(el).find('.product-title, .title, h2, h3, a').first().text().trim();
-      const link = $(el).find('a').first().attr('href');
-      if (title && link) {
-        results.push({ name: title, url: link });
-      }
-    });
-
-    // Fallback if no specific wrapper classes matched
-    if (results.length === 0) {
-      $('a[href*="product"]').each((_, el) => {
-        const text = $(el).text().trim();
-        const href = $(el).attr('href');
-        if (text && href && !results.some(r => r.url === href)) {
-          results.push({ name: text, url: href });
-        }
-      });
-    }
+    const products = [firstPage, ...remainingPages].flatMap(({ data }) => data.items || []);
+    const results = [...new Map(products
+      .filter((product) => `${product.name} ${product.brand} ${product.category}`.toLowerCase().includes(query))
+      .map((product) => [product.id, product])).values()]
+      .slice(0, 20)
+      .map((product) => ({
+        id: product.id,
+        name: product.name,
+        brand: product.brand,
+        category: product.category,
+        url: `https://demo.inelabteamdev.com/product/${product.id}`
+      }));
 
     res.json(results);
   } catch (err) {
@@ -69,14 +72,21 @@ app.get('/api/products/search', async (req, res) => {
 
 // --- ENDPOINT 3: Track a New Product ---
 app.post('/api/products', async (req, res) => {
-  const { name, url } = req.body;
-  if (!name || !url) return res.status(400).json({ error: 'Name and URL are required' });
+  const { name, url, targetPrice } = req.body;
+  if (!url) return res.status(400).json({ error: 'URL is required' });
+
+  let productName = name;
+  try {
+    productName ||= new URL(url).hostname;
+  } catch {
+    return res.status(400).json({ error: 'A valid product URL is required' });
+  }
 
   try {
     // Insert product into Supabase
     const { data: product, error } = await supabase
       .from('products')
-      .insert([{ name, url }])
+      .insert([{ name: productName, url }])
       .select()
       .single();
 
@@ -155,7 +165,22 @@ app.get('/api/products/:id/logs', async (req, res) => {
   }
 });
 
-// --- ENDPOINT 7: Trigger Scheduled Scrapes for All Products (Cron Target) ---
+// --- ENDPOINT 7: Delete a Tracked Product ---
+app.delete('/api/products/:id', async (req, res) => {
+  try {
+    const { error } = await supabase
+      .from('products')
+      .delete()
+      .eq('id', req.params.id);
+
+    if (error) throw error;
+    res.status(204).send();
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to delete product', details: err.message });
+  }
+});
+
+// --- ENDPOINT 8: Trigger Scheduled Scrapes for All Products (Cron Target) ---
 app.post('/api/scrape/trigger', async (req, res) => {
   try {
     // 1. Secret Key Check

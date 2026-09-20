@@ -26,6 +26,7 @@ function startMockServer() {
 
 test('parsePrice strips non-numeric characters and keeps valid values', () => {
   assert.equal(parsePrice('$19.99'), 19.99);
+  assert.equal(parsePrice('Rs. 4,215.00'), 4215);
   assert.equal(parsePrice('€12,50'), 12.5);
   assert.equal(parsePrice('1.250,99'), 1250.99);
   assert.equal(parsePrice('1,250.99'), 1250.99);
