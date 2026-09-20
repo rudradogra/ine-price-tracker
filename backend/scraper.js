@@ -93,9 +93,14 @@ async function scrapeWithBrowser(url, isHeaded) {
   let browser = null;
   try {
     browser = await chromium.launch({
-      headless: !isHeaded,
-      slowMo: isHeaded ? 400 : 0,
-      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage']
+      headless: true,
+      channel: 'chromium',
+      args: [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage',
+        '--single-process'
+      ]
     });
 
     const page = await browser.newPage();
