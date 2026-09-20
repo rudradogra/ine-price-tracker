@@ -1,6 +1,6 @@
-import { CircleDollarSign, Loader2, PackageCheck, Trash2 } from 'lucide-react';
+import { Check, CircleDollarSign, Loader2, PackageCheck, Plus, Trash2 } from 'lucide-react';
 
-export default function ProductCard({ product, onDelete, onViewHistory, onCheckPrice, checking }) {
+export default function ProductCard({ product, tracked, onTrack, onDelete, onViewHistory, onCheckPrice, checking, tracking }) {
   const price = Number(product.price ?? 0);
   const stockStatus = product.stockStatus || 'In Stock';
 
@@ -43,11 +43,22 @@ export default function ProductCard({ product, onDelete, onViewHistory, onCheckP
         </div>
 
         <div className="grid grid-cols-2 gap-2">
+          {!tracked && onTrack && (
+            <button
+              type="button"
+              onClick={() => onTrack(product)}
+              disabled={tracking}
+              className="inline-flex items-center justify-center gap-2 rounded-xl border border-emerald-500/50 bg-emerald-500/10 px-3 py-2 text-sm font-medium text-emerald-200 transition hover:bg-emerald-500/20 disabled:cursor-wait disabled:opacity-60"
+            >
+              {tracking ? <Loader2 className="h-4 w-4 animate-spin" /> : tracked ? <Check className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
+              {tracking ? 'Tracking...' : 'Track'}
+            </button>
+          )}
           <button
             type="button"
             onClick={() => onCheckPrice(product)}
             disabled={checking}
-            className="inline-flex items-center justify-center gap-2 rounded-xl bg-indigo-600 px-3 py-2 text-sm font-medium text-white transition hover:bg-indigo-500 disabled:cursor-wait disabled:opacity-60"
+            className={`inline-flex items-center justify-center gap-2 rounded-xl bg-indigo-600 px-3 py-2 text-sm font-medium text-white transition hover:bg-indigo-500 disabled:cursor-wait disabled:opacity-60 ${!tracked && onTrack ? '' : 'col-span-2'}`}
           >
             {checking && <Loader2 className="h-4 w-4 animate-spin" />}
             {checking ? 'Checking...' : 'Check price'}
@@ -55,7 +66,7 @@ export default function ProductCard({ product, onDelete, onViewHistory, onCheckP
           <button
             type="button"
             onClick={() => onViewHistory(product)}
-            className="rounded-xl border border-indigo-500/50 bg-indigo-500/10 px-3 py-2 text-sm font-medium text-indigo-200 transition hover:bg-indigo-500/20"
+            className="col-span-2 rounded-xl border border-indigo-500/50 bg-indigo-500/10 px-3 py-2 text-sm font-medium text-indigo-200 transition hover:bg-indigo-500/20"
           >
             History
           </button>

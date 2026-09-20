@@ -3,10 +3,11 @@ import { AlertCircle, Loader2, RefreshCw, Search } from 'lucide-react';
 import Navbar from './components/Navbar';
 import ProductCard from './components/ProductCard';
 import PriceHistoryModal from './components/PriceHistoryModal';
-import { checkStoreProduct, getProductHistory, getProductLogs, getStoreProducts } from './api';
+import { checkStoreProduct, deleteProduct, getProductHistory, getProductLogs, getProducts, getStoreProducts, trackProduct } from './api';
 
 export default function App() {
   const [products, setProducts] = useState([]);
+  const [trackedProducts, setTrackedProducts] = useState([]);
   const [catalogQuery, setCatalogQuery] = useState('');
   const [selectedProduct, setSelectedProduct] = useState(null);
   const [selectedHistory, setSelectedHistory] = useState([]);
@@ -15,25 +16,62 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [searchLoading, setSearchLoading] = useState(false);
   const [checkingId, setCheckingId] = useState(null);
+  const [trackingId, setTrackingId] = useState(null);
   const [error, setError] = useState('');
   const [lastSynced, setLastSynced] = useState('Never');
 
   const stats = useMemo(() => {
-    return { totalTracked: products.length };
-  }, [products]);
+    return { totalCatalog: products.length, totalTracked: trackedProducts.length };
+  }, [products, trackedProducts]);
 
   const loadProducts = async () => {
     try {
       setLoading(true);
       setError('');
-      const data = await getStoreProducts();
-      setProducts(data);
+      const [catalogResult, trackedResult] = await Promise.allSettled([getStoreProducts(), getProducts()]);
+
+      if (catalogResult.status === 'fulfilled') {
+        setProducts(catalogResult.value);
+      } else {
+        throw catalogResult.reason;
+      }
+
+      if (trackedResult.status === 'fulfilled') {
+        setTrackedProducts(trackedResult.value);
+      } else {
+        setTrackedProducts([]);
+        setError('Catalog loaded, but tracked products are unavailable. Check Supabase permissions.');
+      }
       setLastSynced(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
     } catch (err) {
       setError(err?.response?.data?.error || 'Unable to load tracked products.');
       setProducts([]);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleTrackProduct = async (product) => {
+    try {
+      setTrackingId(product.id);
+      setError('');
+      const saved = await trackProduct({ name: product.name, url: product.url });
+      const tracked = {
+        ...(saved?.product || {}),
+        ...product,
+        ...(saved?.initialScrape?.price !== null && saved?.initialScrape?.price !== undefined
+          ? {
+              price: saved.initialScrape.price,
+              stockStatus: saved.initialScrape.stockStatus,
+              lastChecked: new Date().toISOString()
+            }
+          : {})
+      };
+      setTrackedProducts((current) => [tracked, ...current.filter((item) => item.url !== tracked.url)]);
+    } catch (err) {
+      setError(err?.response?.data?.error || 'Unable to track this product.');
+    } finally {
+      setTrackingId(null);
     }
   };
 
@@ -49,11 +87,24 @@ export default function App() {
       setProducts((current) => current.map((item) => item.id === product.id
         ? { ...item, price: result.price, stockStatus: result.stockStatus, lastChecked: result.checkedAt }
         : item));
+      setTrackedProducts((current) => current.map((item) => item.url === product.url
+        ? { ...item, price: result.price, stockStatus: result.stockStatus, lastChecked: result.checkedAt }
+        : item));
       setLastSynced(new Date(result.checkedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
     } catch (err) {
       setError(err?.response?.data?.error || err?.response?.data?.details || 'Price check failed.');
     } finally {
       setCheckingId(null);
+    }
+  };
+
+  const handleDelete = async (id) => {
+    try {
+      setError('');
+      await deleteProduct(id);
+      setTrackedProducts((current) => current.filter((product) => product.id !== id));
+    } catch (err) {
+      setError(err?.response?.data?.error || 'Unable to remove this tracked product.');
     }
   };
 
@@ -90,8 +141,8 @@ export default function App() {
           <div className="rounded-2xl border border-slate-800 bg-slate-900/80 p-5 shadow-soft">
             <p className="text-sm text-slate-400">Tracked products</p>
             <div className="mt-3 flex items-end justify-between">
-              <span className="text-3xl font-bold text-white">{stats.totalTracked}</span>
-              <span className="rounded-full bg-indigo-500/10 px-2 py-1 text-xs text-indigo-300">Catalog</span>
+              <span className="text-3xl font-bold text-white">{stats.totalCatalog}</span>
+              <span className="rounded-full bg-indigo-500/10 px-2 py-1 text-xs text-indigo-300">Available</span>
             </div>
           </div>
         </section>
@@ -153,13 +204,46 @@ export default function App() {
               <ProductCard
                 key={product.id}
                 product={product}
+                tracked={trackedProducts.some((item) => item.url === product.url)}
+                onTrack={handleTrackProduct}
                 onViewHistory={handleViewHistory}
                 onCheckPrice={handleCheckPrice}
                 checking={checkingId === product.id}
+                tracking={trackingId === product.id}
               />
             ))}
           </div>
         )}
+
+        <section className="mt-12">
+          <div className="mb-5 flex items-end justify-between gap-3">
+            <div>
+              <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Persistence</p>
+              <h2 className="mt-1 text-2xl font-semibold text-white">Tracked products</h2>
+            </div>
+            <span className="text-sm text-slate-400">{stats.totalTracked} tracked</span>
+          </div>
+
+          {trackedProducts.length === 0 ? (
+            <div className="rounded-3xl border border-dashed border-slate-700 bg-slate-900/60 p-8 text-center text-slate-400">
+              Track a catalog product above to start recording price history.
+            </div>
+          ) : (
+            <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
+              {trackedProducts.map((product) => (
+                <ProductCard
+                  key={`tracked-${product.id}`}
+                  product={product}
+                  tracked
+                  onDelete={handleDelete}
+                  onViewHistory={handleViewHistory}
+                  onCheckPrice={handleCheckPrice}
+                  checking={checkingId === product.id}
+                />
+              ))}
+            </div>
+          )}
+        </section>
       </main>
 
       <PriceHistoryModal
