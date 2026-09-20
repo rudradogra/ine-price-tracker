@@ -17,6 +17,11 @@ const supabaseUrl = process.env.SUPABASE_URL;
 const supabaseKey = process.env.SUPABASE_KEY;
 const supabase = createClient(supabaseUrl, supabaseKey);
 
+if (!supabaseUrl || !supabaseKey) {
+  console.error("CRITICAL ERROR: Supabase environment variables are missing!");
+}
+supabase = createClient(supabaseUrl || '', supabaseKey || '');
+
 // --- ENDPOINT 1: Health Check ---
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
