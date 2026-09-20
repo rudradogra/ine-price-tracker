@@ -181,9 +181,3 @@ export async function scrapeProduct(url, maxRetries = 3) {
     error: lastError || 'Max retry limit reached'
   };
 }
-// Inside backend/scraper.js -> scrapeWithBrowser function
-browser = await chromium.launch({
-  headless: !isHeaded,
-  slowMo: isHeaded ? 400 : 0,
-  args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage']
-});
