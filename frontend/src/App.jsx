@@ -132,9 +132,15 @@ export default function App() {
     }
   };
 
-  const visibleProducts = products.filter((product) => `${product.name} ${product.brand} ${product.category}`
-    .toLowerCase()
-    .includes(catalogQuery.trim().toLowerCase()));
+  const visibleProducts = products
+    .filter((product) => `${product.name} ${product.brand} ${product.category}`
+      .toLowerCase()
+      .includes(catalogQuery.trim().toLowerCase()))
+    .sort((left, right) => {
+      const leftStarred = trackedProducts.some((item) => item.url === left.url);
+      const rightStarred = trackedProducts.some((item) => item.url === right.url);
+      return Number(rightStarred) - Number(leftStarred);
+    });
   const emptyState = !loading && visibleProducts.length === 0;
 
   return (
