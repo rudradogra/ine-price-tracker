@@ -152,31 +152,42 @@ app.get('/api/products/:id/logs', async (req, res) => {
 
 // --- ENDPOINT 7: Trigger Scheduled Scrapes for All Products (Cron Target) ---
 app.post('/api/scrape/trigger', async (req, res) => {
-  // Simple auth check via secret header or query param
-  const authHeader = req.headers['x-cron-secret'] || req.query.secret;
-  if (authHeader !== process.env.CRON_SECRET) {
-    return res.status(401).json({ error: 'Unauthorized cron request' });
-  }
-
   try {
+    // 1. Secret Key Check
+    const authHeader = req.headers['x-cron-secret'] || req.query.secret;
+    if (authHeader !== process.env.CRON_SECRET) {
+      return res.status(401).json({ error: 'Unauthorized cron request' });
+    }
+
+    // 2. Query Supabase
     const { data: products, error } = await supabase.from('products').select('*');
-    if (error) throw error;
+    
+    if (error) {
+      console.error('Supabase Query Error:', error.message);
+      return res.status(500).json({ error: 'Database query failed', details: error.message });
+    }
 
+    // 3. Handle Empty Product Table Gracefully (Prevents 500 Crash)
+    if (!products || products.length === 0) {
+      return res.status(200).json({ 
+        message: 'Cron job executed successfully. No products are currently tracked.', 
+        summary: [] 
+      });
+    }
+
+    // 4. Batch Scrape Active Products
     const summary = [];
-
     for (const product of products) {
       console.log(`[Cron Job] Processing product: ${product.name}`);
       const result = await scrapeProduct(product.url);
       const status = result.error ? 'FAILED' : (result.attempts > 1 ? 'RETRIED' : 'SUCCESS');
 
-      // Log the scrape attempt honestly
       await supabase.from('scrape_logs').insert([{
         product_id: product.id,
         status: status,
         error_message: result.error
       }]);
 
-      // Only record price history if price is valid (never save null or zero)
       if (result.price !== null) {
         await supabase.from('price_history').insert([{
           product_id: product.id,
@@ -188,9 +199,11 @@ app.post('/api/scrape/trigger', async (req, res) => {
       summary.push({ productId: product.id, status, price: result.price });
     }
 
-    res.json({ message: 'Scrape batch completed', summary });
+    return res.status(200).json({ message: 'Scrape batch completed', summary });
+
   } catch (err) {
-    res.status(500).json({ error: 'Cron batch failed', details: err.message });
+    console.error('Cron endpoint crash:', err.message);
+    return res.status(500).json({ error: 'Cron endpoint failure', details: err.message });
   }
 });
 
