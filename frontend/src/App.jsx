@@ -221,12 +221,12 @@ export default function App() {
               <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Persistence</p>
               <h2 className="mt-1 text-2xl font-semibold text-white">Tracked products</h2>
             </div>
-            <span className="text-sm text-slate-400">{stats.totalTracked} tracked</span>
+              <span className="text-sm text-slate-400">{stats.totalTracked} starred</span>
           </div>
 
           {trackedProducts.length === 0 ? (
             <div className="rounded-3xl border border-dashed border-slate-700 bg-slate-900/60 p-8 text-center text-slate-400">
-              Track a catalog product above to start recording price history.
+              Star a catalog product above to start recording price history.
             </div>
           ) : (
             <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">

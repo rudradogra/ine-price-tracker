@@ -1,4 +1,4 @@
-import { Check, CircleDollarSign, Loader2, PackageCheck, Plus, Trash2 } from 'lucide-react';
+import { CircleDollarSign, Loader2, PackageCheck, Star, Trash2 } from 'lucide-react';
 
 export default function ProductCard({ product, tracked, onTrack, onDelete, onViewHistory, onCheckPrice, checking, tracking }) {
   const price = Number(product.price ?? 0);
@@ -9,7 +9,10 @@ export default function ProductCard({ product, tracked, onTrack, onDelete, onVie
       <div className="space-y-4 p-4">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <h3 className="line-clamp-2 text-base font-semibold text-white">{product.name}</h3>
+            <div className="flex items-center gap-2">
+              {tracked && <Star className="h-4 w-4 shrink-0 fill-amber-400 text-amber-400" aria-label="Starred product" />}
+              <h3 className="line-clamp-2 text-base font-semibold text-white">{product.name}</h3>
+            </div>
             <p className="mt-1 text-xs text-slate-400">{product.category || 'Consumer electronics'}</p>
           </div>
           {onDelete && (
@@ -48,10 +51,11 @@ export default function ProductCard({ product, tracked, onTrack, onDelete, onVie
               type="button"
               onClick={() => onTrack(product)}
               disabled={tracking}
-              className="inline-flex items-center justify-center gap-2 rounded-xl border border-emerald-500/50 bg-emerald-500/10 px-3 py-2 text-sm font-medium text-emerald-200 transition hover:bg-emerald-500/20 disabled:cursor-wait disabled:opacity-60"
+              className="inline-flex items-center justify-center gap-2 rounded-xl border border-amber-500/50 bg-amber-500/10 px-3 py-2 text-sm font-medium text-amber-200 transition hover:bg-amber-500/20 disabled:cursor-wait disabled:opacity-60"
+              aria-label={`Star ${product.name} to track it`}
             >
-              {tracking ? <Loader2 className="h-4 w-4 animate-spin" /> : tracked ? <Check className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
-              {tracking ? 'Tracking...' : 'Track'}
+              {tracking ? <Loader2 className="h-4 w-4 animate-spin" /> : <Star className="h-4 w-4" />}
+              {tracking ? 'Saving...' : 'Star to track'}
             </button>
           )}
           <button
