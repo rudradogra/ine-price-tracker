@@ -113,6 +113,21 @@ export default function App() {
     }
   };
 
+  const handleUntrackProduct = async (product) => {
+    try {
+      setError('');
+      const trackedProduct = trackedProducts.find((item) => item.url === product.url);
+      if (!trackedProduct?.id) {
+        setError('This product is not available in tracked records.');
+        return;
+      }
+      await deleteProduct(trackedProduct.id);
+      setTrackedProducts((current) => current.filter((item) => item.url !== product.url));
+    } catch (err) {
+      setError(err?.response?.data?.error || 'Unable to unstar this product.');
+    }
+  };
+
   const handleViewHistory = async (product) => {
     try {
       setSelectedProduct(product);
@@ -226,6 +241,7 @@ export default function App() {
                 product={product}
                 tracked={trackedProducts.some((item) => item.url === product.url)}
                 onTrack={handleTrackProduct}
+                onUntrack={handleUntrackProduct}
                 onViewHistory={handleViewHistory}
                 onCheckPrice={handleCheckPrice}
                 checking={checkingId === product.id}
@@ -255,6 +271,7 @@ export default function App() {
                   key={`tracked-${product.id}`}
                   product={product}
                   tracked
+                  onUntrack={handleUntrackProduct}
                   onDelete={handleDelete}
                   onViewHistory={handleViewHistory}
                   onCheckPrice={handleCheckPrice}

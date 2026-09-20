@@ -1,6 +1,6 @@
 import { CircleDollarSign, Loader2, PackageCheck, Star, Trash2 } from 'lucide-react';
 
-export default function ProductCard({ product, tracked, onTrack, onDelete, onViewHistory, onCheckPrice, checking, tracking }) {
+export default function ProductCard({ product, tracked, onTrack, onUntrack, onDelete, onViewHistory, onCheckPrice, checking, tracking }) {
   const price = Number(product.price ?? 0);
   const stockStatus = product.stockStatus || 'In Stock';
 
@@ -10,7 +10,19 @@ export default function ProductCard({ product, tracked, onTrack, onDelete, onVie
         <div className="flex items-start justify-between gap-3">
           <div>
             <div className="flex items-center gap-2">
-              {tracked && <Star className="h-4 w-4 shrink-0 fill-amber-400 text-amber-400" aria-label="Starred product" />}
+              {tracked && onUntrack ? (
+                <button
+                  type="button"
+                  onClick={() => onUntrack(product)}
+                  className="rounded-md p-1 text-amber-400 transition hover:bg-amber-400/10 hover:text-amber-300"
+                  aria-label={`Unstar ${product.name}`}
+                  title="Unstar product"
+                >
+                  <Star className="h-4 w-4 fill-current" />
+                </button>
+              ) : tracked && (
+                <Star className="h-4 w-4 shrink-0 fill-amber-400 text-amber-400" aria-label="Starred product" />
+              )}
               <h3 className="line-clamp-2 text-base font-semibold text-white">{product.name}</h3>
             </div>
             <p className="mt-1 text-xs text-slate-400">{product.category || 'Consumer electronics'}</p>
